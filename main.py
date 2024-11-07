@@ -1,7 +1,9 @@
-from http.client import HTTPException
-from fastapi import FastAPI
-from typing import Optional, List, Dict
-from pydantic import BaseModel
+# Path для динамического параметра, Query для статического параметра
+from fastapi import FastAPI, HTTPException, Path, Query, status, Body
+from typing import Optional, List, Dict, Annotated
+from pydantic import BaseModel, Field
+# Пока в инактиве, не понимаю насколько это value
+from uuid import uuid4
 
 app = FastAPI()
 
@@ -25,6 +27,12 @@ class TaskCreate(BaseModel):
     author_id: int
 
 
+class UserCreate(BaseModel):
+    name: Annotated[str, Field(..., title='name user', min_length=2, max_length=20)]
+    age: Annotated[int, Field(..., title='age user', ge=14, lt=40)]
+
+
+
 @app.get("/")
 async def start() -> str:
     return "Welcome to Task Manager"
@@ -41,14 +49,17 @@ async def users() -> List[User]:
 
 
 @app.get("/tasks/{id}")
-async def tasks_id(id: int) -> Task:
+# 3 точки в Path указывает что id обязательно должен быть передан, иначе будет ошибка
+async def tasks_id(id: Annotated[int, Path(..., title='Указывается id задачи', ge=1, lt=100)]) -> Task:
     for task in tasks_list:
         if task["id"] == id:
             return Task(**task)
+    raise HTTPException(status_code=500, detail="Task not found")
 
 
 @app.get("/search")
-async def search(task_id: Optional[int] = None) -> Dict[str, Optional[Task]]:
+async def search(task_id: Annotated[
+    Optional[int], Query(title='id для поиска задачи', ge=1, lt=100)]) -> Dict[str, Optional[Task]]:
     if task_id:
         for task in tasks_list:
             if task["id"] == task_id:
@@ -59,16 +70,39 @@ async def search(task_id: Optional[int] = None) -> Dict[str, Optional[Task]]:
 
 @app.post("/tasks/add")
 async def add_task(task: TaskCreate) -> Task:
+    # Проверка на существование пользователя
     author = next((user for user in users_list if user['id'] == task.author_id), None)
     if not author:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    new_task_id = len(tasks_list) + 1
-
-    new_task = {'id': new_task_id, 'deadline': task.deadline, 'theme': task.theme, 'author': author}
+    # Создаем задачу с уникальным ID
+    new_task = Task(
+        id = len(tasks_list) + 1,
+        deadline = task.deadline,
+        theme = task.theme,
+        author = author
+    )
     tasks_list.append(new_task)
 
-    return Task(**new_task)
+    return new_task
+
+
+@app.post("/users/add")
+async def add_user(user: Annotated[UserCreate,
+    Body(..., example={
+        'name': 'UserName',
+        'age': 18
+    })]) -> User:
+    # Создаем user с уникальным ID
+    new_user = User(
+        id = len(users_list) + 1,
+        name = user.name,
+        age = user.age,
+    )
+    tasks_list.append(new_user)
+
+    return new_user
+
 
 
 users_list = [
