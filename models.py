@@ -20,7 +20,7 @@ class Task(Base):
     author_id = Column(Integer, ForeignKey('users.id'), index=True)
 
     author = relationship('User', foreign_keys=[author_id])
-    executor = relationship('User', foreign_keys=executor_id)
+    executor = relationship('User', foreign_keys=[executor_id])
 
 
 class UserRole(Base):

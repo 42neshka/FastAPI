@@ -1,89 +1,104 @@
-from http.client import HTTPException
-from fastapi import FastAPI
-from typing import Optional, List, Dict
-from pydantic import BaseModel
+# Path для динамического параметра, Query для статического параметра
+from fastapi import FastAPI, HTTPException, Path, Query, status, Body, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional, List, Dict, Annotated
+from sqlalchemy.orm import Session
+
+from models import User, Task, Base, UserRole, Role
+from database import engine, session_local
+from schemas import TaskCreate, UserCreate, TaskResponse, UserResponse, UserRoleResponse, UserRoleCreate, \
+    RoleResponse
+
+# Пока в инактиве, не понимаю насколько это value
+from uuid import uuid4
 
 app = FastAPI()
 
-
-class User(BaseModel):
-    id: int
-    name: str
-    age: int
-
-
-class Task(BaseModel):
-    id: int
-    deadline: str
-    theme: str
-    author: User
-
-
-class TaskCreate(BaseModel):
-    deadline: str
-    theme: str
-    author_id: int
-
-
-@app.get("/")
-async def start() -> str:
-    return "Welcome to Task Manager"
-
-
-@app.get("/tasks")
-async def tasks() -> List[Task]:
-    return [Task(**task) for task in tasks_list]
-
-
-@app.get("/users")
-async def users() -> List[User]:
-    return [User(**user) for user in users_list]
-
-
-@app.get("/tasks/{id}")
-async def tasks_id(id: int) -> Task:
-    for task in tasks_list:
-        if task["id"] == id:
-            return Task(**task)
-
-
-@app.get("/search")
-async def search(task_id: Optional[int] = None) -> Dict[str, Optional[Task]]:
-    if task_id:
-        for task in tasks_list:
-            if task["id"] == task_id:
-                return {"data": Task(**task)}
-    else:
-        return {"data": None}
-
-
-@app.post("/tasks/add")
-async def add_task(task: TaskCreate) -> Task:
-    author = next((user for user in users_list if user['id'] == task.author_id), None)
-    if not author:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    new_task_id = len(tasks_list) + 1
-
-    new_task = {'id': new_task_id, 'deadline': task.deadline, 'theme': task.theme, 'author': author}
-    tasks_list.append(new_task)
-
-    return Task(**new_task)
-
-
-users_list = [
-    {'id': 4, 'name': 'Alex', 'age': 26},
-    {'id': 5, 'name': 'Damir', 'age': 20},
-    {'id': 2, 'name': 'Bulat', 'age': 22},
-    {'id': 1, 'name': 'Bone', 'age': 26},
-    {'id': 3, 'name': 'Ilyas', 'age': 27}
+# Настройка CORS
+origins = [
+    'http://localhost:8000',
+    'http://127.0.0.1:8000'
 ]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*']
+)
 
-tasks_list = [
-    {"id": 1, "deadline":"30 nov", 'theme': "k8s", 'author': users_list[2]},
-    {"id": 2, "deadline":"10 nov", 'theme': "web-socket", 'author': users_list[1]},
-    {"id": 3, "deadline":"10 nov", 'theme': "fastapi", 'author': users_list[0]},
-    {"id": 4, "deadline":"25 nov", 'theme': "cam", 'author': users_list[3]},
-    {"id": 5, "deadline":"30 nov", 'theme': "asterisk", 'author': users_list[4]}
-]
+
+
+Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    db = session_local()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@app.post("/users/", response_model=UserResponse)
+async def create_user(user: UserCreate, db: Session = Depends(get_db)) -> User:
+    db_user = User(name=user.name, age=user.age)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return db_user
+
+
+@app.post("/tasks/", response_model=TaskResponse)
+async def create_task(task: TaskCreate, db: Session = Depends(get_db)) -> Task:
+    db_user = db.query(User).filter(User.id == task.executor_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    db_task = Task(executor_id=task.executor_id, theme=task.theme, deadline=task.deadline, author_id=task.author_id)
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+
+    return db_task
+
+
+@app.post("/userroles/", response_model=UserRoleResponse)
+async def create_user_role(user_role: UserRoleCreate, db: Session = Depends(get_db)) -> UserRole:
+    db_user_role = User(user_id=user_role.user_id, role_id=user_role.role_id)
+    db.add(db_user_role)
+    db.commit()
+    db.refresh(db_user_role)
+
+    return db_user_role
+
+
+@app.post("/roles/", response_model=RoleResponse)
+async def create_role(role: UserCreate, db: Session = Depends(get_db)) -> Role:
+    db_role = Role(name=role.name)
+    db.add(db_role)
+    db.commit()
+    db.refresh(db_role)
+
+    return db_role
+
+
+
+
+@app.get("/tasks/", response_model=List[TaskResponse])
+async def tasks(db: Session = Depends(get_db)):
+    return db.query(Task).all()
+
+@app.get("/users/", response_model=List[UserResponse])
+async def users(db: Session = Depends(get_db)):
+    return db.query(User).all()
+
+@app.get("/userroles/", response_model=List[UserRoleResponse])
+async def usersRoles(db: Session = Depends(get_db)):
+    return db.query(UserRole).all()
+
+@app.get("/roles/", response_model=List[RoleResponse])
+async def roles(db: Session = Depends(get_db)):
+    return db.query(Role).all()

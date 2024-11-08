@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     age: int
 
 
-class User(UserBase):
+class UserResponse(UserBase):
     id: int
 
     class Config:
