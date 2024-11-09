@@ -16,7 +16,7 @@ app = FastAPI()
 
 # Настройка CORS
 origins = [
-    'http://localhost:8000',
+    'http://localhost:8080',
     'http://127.0.0.1:8000'
 ]
 
@@ -91,9 +91,12 @@ async def create_role(role: UserCreate, db: Session = Depends(get_db)) -> Role:
 async def tasks(db: Session = Depends(get_db)):
     return db.query(Task).all()
 
-@app.get("/users/", response_model=List[UserResponse])
-async def users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+@app.get("/users/{name}", response_model=UserResponse)
+async def users(name: str, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.name == name).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return db_user
 
 @app.get("/userroles/", response_model=List[UserRoleResponse])
 async def usersRoles(db: Session = Depends(get_db)):

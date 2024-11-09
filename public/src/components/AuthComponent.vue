@@ -17,7 +17,7 @@
         <form @submit.prevent="login">
             <div>
                 <label for="loginName">Name:</label>
-                <input type="text" id="loginName" v-model="registerName">
+                <input type="text" id="loginName" v-model="loginName">
             </div>
             <button type="submit">Accept</button>
         </form>
@@ -29,27 +29,34 @@
 import axios from 'axios';
 
 export default {
-name: 'AuthComponent',
-data() {
-    return {
-        registerName: '',
-        registerAge: '',
-        loginName: ''
-    }
-},
-methods: {
-    async register() {
-        const response = await axios.post('http://127.0.0.1:8000/users/', {
-            name: this.registerName,
-            age: this.registerAge
-        });
-
-        console.log('Register success: ' + response.data);
+    name: 'AuthComponent',
+    data() {
+        return {
+            registerName: '',
+            registerAge: '',
+            loginName: ''
+        }
     },
-    async login() {
+    methods: {
+        async register() {
+            const response = await axios.post('http://127.0.0.1:8000/users/', {
+                name: this.registerName,
+                age: Number(this.registerAge)
+            });
 
+            console.log('Register success: ' + response.data);
+
+        },
+        async login() {
+            console.log(this.loginName + 'test')
+            const response = await axios.get(`http://127.0.0.1:8000/users/${this.loginName}`)
+            if(response.data) {
+                this.$emit('handleAuth');
+            } else {
+                alert('User didnt find :(')
+            }
+        }
     }
-}
 }
 </script>
 
